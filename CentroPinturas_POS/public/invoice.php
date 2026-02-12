@@ -15,106 +15,97 @@ $st = $pdo->prepare("SELECT f.id_factura, f.consecutivo, f.fecha_emision, f.tota
                      FROM factura f
                      JOIN venta v ON v.id_venta = f.id_venta
                      LEFT JOIN cliente c ON c.id_cliente = v.id_cliente
-                     JOIN  usuario u ON u.id_usuario = v.id_usuario
+                     JOIN usuario u ON u.id_usuario = v.id_usuario
                      WHERE f.id_factura = ?");
 $st->execute([$id]);
 $head = $st->fetch();
+
 if (!$head) { http_response_code(404); echo "No existe"; exit; }
 
-$dt = $pdo->prepare("SELECT d.cantidad, d.precio_unitario, p.nombre, p.sku, d.total_linea
-                     FROM dbo.detalle_venta d
-                     JOIN dbo.producto p ON p.id_producto = d.id_producto
+$dt = $pdo->prepare("SELECT d.cantidad,
+                            d.precio_unitario,
+                            (d.cantidad * d.precio_unitario) AS total_linea,
+                            p.nombre,
+                            p.sku
+                     FROM detalle_venta d
+                     JOIN producto p ON p.id_producto = d.id_producto
                      WHERE d.id_venta = ?
                      ORDER BY d.id_detalle ASC");
+
 $dt->execute([(int)$head['id_venta']]);
 $items = $dt->fetchAll();
 
 $cliente = trim(($head['c_nombre'] ?? 'Cliente') . ' ' . ($head['c_apellido'] ?? ''));
+
+function fmt($n){
+    return "₡" . number_format((float)$n, 2);
+}
 ?>
-<!doctype html>
+
+<!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Factura <?= h($head['consecutivo']) ?></title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/app.css">
-
+<meta charset="UTF-8">
+<title>Factura <?= htmlspecialchars($head['consecutivo']) ?></title>
+<style>
+body { font-family: Arial, sans-serif; padding: 30px; }
+h1 { margin-bottom: 5px; }
+.small { color: #666; font-size: 14px; }
+table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+th, td { border: 1px solid #ddd; padding: 8px; }
+th { background: #f4f4f4; text-align: left; }
+.right { text-align: right; }
+.total { font-weight: bold; }
+.box { margin-top: 20px; }
+</style>
 </head>
-<body class="bg invoice">
-  <div class="invoice-shell">
-    <div class="invoice-card">
-      <div class="inv-top">
-        <div class="brand mini">
-          <div class="logo-dot"></div>
-          <div>
-            <div class="brand-title">Centro de Pinturas</div>
-            <div class="brand-sub">Brenes y Herrera</div>
-          </div>
-        </div>
+<body>
 
-        <div class="inv-meta">
-          <div class="inv-title">Factura</div>
-          <div class="inv-no"><?= h($head['consecutivo']) ?></div>
-          <div class="muted"><?= h((new DateTime($head['fecha_emision']))->format('Y-m-d H:i')) ?></div>
-        </div>
-      </div>
+<h1>Factura #<?= htmlspecialchars($head['consecutivo']) ?></h1>
+<div class="small">
+Fecha: <?= htmlspecialchars($head['fecha_emision']) ?><br>
+Vendedor: <?= htmlspecialchars($head['u_nombre']) ?>
+</div>
 
-      <div class="inv-grid">
-        <div class="inv-box">
-          <div class="k">Cliente</div>
-          <div class="v"><?= h($cliente ?: 'Cliente contado') ?></div>
-          <div class="muted"><?= h($head['telefono'] ?? '') ?></div>
-          <div class="muted"><?= h($head['correo'] ?? '') ?></div>
-          <div class="muted"><?= h($head['direccion'] ?? '') ?></div>
-        </div>
+<div class="box">
+<strong>Cliente:</strong><br>
+<?= htmlspecialchars($cliente ?: 'Cliente contado') ?><br>
+<?= htmlspecialchars($head['telefono'] ?? '') ?><br>
+<?= htmlspecialchars($head['correo'] ?? '') ?><br>
+<?= htmlspecialchars($head['direccion'] ?? '') ?>
+</div>
 
-        <div class="inv-box">
-          <div class="k">Atendió</div>
-          <div class="v"><?= h($head['u_nombre']) ?></div>
-          <div class="k mt">Pago</div>
-          <div class="v"><?= h($head['metodo_pago']) ?></div>
-        </div>
-      </div>
+<table>
+<thead>
+<tr>
+<th>Producto</th>
+<th>SKU</th>
+<th>Cantidad</th>
+<th>Precio</th>
+<th>Total</th>
+</tr>
+</thead>
+<tbody>
+<?php foreach ($items as $it): ?>
+<tr>
+<td><?= htmlspecialchars($it['nombre']) ?></td>
+<td><?= htmlspecialchars($it['sku']) ?></td>
+<td><?= (int)$it['cantidad'] ?></td>
+<td class="right"><?= fmt($it['precio_unitario']) ?></td>
+<td class="right"><?= fmt($it['total_linea']) ?></td>
+</tr>
+<?php endforeach; ?>
+</tbody>
+</table>
 
-      <div class="inv-table">
-        <div class="inv-row head">
-          <div>Producto</div>
-          <div class="r">Cant.</div>
-          <div class="r">Precio</div>
-          <div class="r">Total</div>
-        </div>
-        <?php foreach ($items as $it): ?>
-          <div class="inv-row">
-            <div>
-              <div class="pname"><?= h($it['nombre']) ?></div>
-              <div class="psku muted"><?= h($it['sku'] ?? '') ?></div>
-            </div>
-            <div class="r"><?= (int)$it['cantidad'] ?></div>
-            <div class="r"><?= money_crc($it['precio_unitario']) ?></div>
-            <div class="r"><?= money_crc($it['total_linea']) ?></div>
-          </div>
-        <?php endforeach; ?>
-      </div>
+<div class="box right">
+Subtotal: <?= fmt($head['subtotal']) ?><br>
+Descuento: <?= fmt($head['descuento']) ?><br>
+Impuesto: <?= fmt($head['impuesto']) ?><br>
+<span class="total">TOTAL: <?= fmt($head['total_venta']) ?></span><br><br>
+Método de pago: <?= htmlspecialchars($head['metodo_pago']) ?><br>
+<?= htmlspecialchars($head['observacion']) ?>
+</div>
 
-      <div class="inv-totals">
-        <div class="tot-row"><span>Subtotal</span><span><?= money_crc($head['subtotal']) ?></span></div>
-        <div class="tot-row"><span>Descuento</span><span><?= money_crc($head['descuento']) ?></span></div>
-        <div class="tot-row"><span>Impuesto</span><span><?= money_crc($head['impuesto']) ?></span></div>
-        <div class="tot-row strong"><span>Total</span><span><?= money_crc($head['total_venta']) ?></span></div>
-      </div>
-
-      <?php if (!empty($head['observacion'])): ?>
-        <div class="inv-note"><span class="k">Obs:</span> <?= h($head['observacion']) ?></div>
-      <?php endif; ?>
-
-      <div class="inv-actions no-print">
-        <a class="btn" href="/pos.php">Volver</a>
-        <button class="btn primary" onclick="window.print()">Imprimir</button>
-      </div>
-    </div>
-  </div>
 </body>
 </html>

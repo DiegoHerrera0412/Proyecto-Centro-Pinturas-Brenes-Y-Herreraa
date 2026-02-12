@@ -24,6 +24,7 @@ async function getJSON(url){
   if (!j.ok) throw new Error(j.error || "Error");
   return j.data;
 }
+
 async function postJSON(url, body){
   const r = await fetch(url, {
     method:"POST",
@@ -87,6 +88,7 @@ function decItem(id){
   else state.cart.set(id, { ...cur, cantidad: qty });
   renderCart();
 }
+
 function incItem(id){
   const cur = state.cart.get(id);
   if (!cur) return;
@@ -97,6 +99,7 @@ function incItem(id){
   state.cart.set(id, { ...cur, cantidad: cur.cantidad + 1 });
   renderCart();
 }
+
 function removeItem(id){
   state.cart.delete(id);
   renderCart();
@@ -164,11 +167,17 @@ function flash(id, msg){
 }
 
 function escapeHtml(s){
-  return String(s ?? "").replace(/[&<>"']/g, m => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[m]));
+  return String(s ?? "").replace(/[&<>"']/g, m => ({
+    "&":"&amp;",
+    "<":"&lt;",
+    ">":"&gt;",
+    '"':"&quot;",
+    "'":"&#039;"
+  }[m]));
 }
 
 async function loadProducts(q=""){
-  const data = await getJSON("/api/products.php?q=" + encodeURIComponent(q));
+  const data = await getJSON("api/products.php?q=" + encodeURIComponent(q));
   state.products = data;
   renderProducts();
 }
@@ -176,7 +185,7 @@ async function loadProducts(q=""){
 async function findClients(){
   const q = $("#qClient").value.trim();
   if (!q){ flash("finishHint","Escribí algo para buscar."); return; }
-  const data = await getJSON("/api/clients.php?q=" + encodeURIComponent(q));
+  const data = await getJSON("api/clients.php?q=" + encodeURIComponent(q));
   state.clients = data;
   openClientMenu(data);
 }
@@ -185,6 +194,7 @@ function openClientMenu(clients){
   const sel = $("#clientSelect");
   const menu = $("#clientMenu");
   menu.innerHTML = "";
+
   const base = [
     { id_cliente: 1, label: "Cliente contado" }
   ];
@@ -206,6 +216,7 @@ function openClientMenu(clients){
     });
     menu.appendChild(opt);
   }
+
   sel.classList.add("open");
 }
 
@@ -222,8 +233,11 @@ async function saveClient(){
   const fd = new FormData(form);
   const payload = Object.fromEntries(fd.entries());
   try{
-    const c = await postJSON("/api/clients.php", payload);
-    state.client = { id_cliente: Number(c.id_cliente), label: [c.nombre, c.apellido].filter(Boolean).join(" ") };
+    const c = await postJSON("api/clients.php", payload);
+    state.client = {
+      id_cliente: Number(c.id_cliente),
+      label: [c.nombre, c.apellido].filter(Boolean).join(" ")
+    };
     $("#clientValue").textContent = state.client.label;
     $("#dlgClient").close();
     flash("finishHint", "Cliente guardado.");
@@ -238,7 +252,11 @@ async function finish(){
     id_producto: Number(it.id_producto),
     cantidad: Number(it.cantidad)
   }));
-  if (items.length === 0){ flash("finishHint", "Carrito vacío."); return; }
+
+  if (items.length === 0){
+    flash("finishHint", "Carrito vacío.");
+    return;
+  }
 
   const payload = {
     id_cliente: state.client.id_cliente === 1 ? 0 : state.client.id_cliente,
@@ -250,15 +268,21 @@ async function finish(){
   };
 
   $("#btnFinish").disabled = true;
+
   try{
-    const res = await postJSON("/api/finalize_sale.php", payload);
+    const res = await postJSON("api/finalize_sale.php", payload);
+
     state.cart.clear();
     renderCart();
+
     $("#discount").value = "0";
     $("#tax").value = "0";
     $("#note").value = "";
+
     flash("finishHint", "Venta lista: " + res.consecutivo);
-    window.open("/invoice.php?id=" + encodeURIComponent(res.id_factura), "_blank");
+
+    window.open("invoice.php?id=" + encodeURIComponent(res.id_factura), "_blank");
+
     await loadProducts($("#qProduct").value.trim());
   }catch(err){
     flash("finishHint", err.message);
@@ -271,17 +295,33 @@ function init(){
   today();
   setInterval(today, 30000);
 
-  $("#btnScan").addEventListener("click", () => loadProducts($("#qProduct").value.trim()));
-  $("#qProduct").addEventListener("keydown", (e) => { if (e.key === "Enter") loadProducts($("#qProduct").value.trim()); });
+  $("#btnScan").addEventListener("click", () =>
+    loadProducts($("#qProduct").value.trim())
+  );
+
+  $("#qProduct").addEventListener("keydown", (e) => {
+    if (e.key === "Enter")
+      loadProducts($("#qProduct").value.trim());
+  });
 
   $("#discount").addEventListener("input", calcTotals);
   $("#tax").addEventListener("input", calcTotals);
 
   $("#btnFindClient").addEventListener("click", findClients);
-  $("#qClient").addEventListener("keydown", (e) => { if (e.key === "Enter") findClients(); });
 
-  $("#btnNewClient").addEventListener("click", () => $("#dlgClient").showModal());
-  $("#btnSaveClient").addEventListener("click", (e) => { e.preventDefault(); saveClient(); });
+  $("#qClient").addEventListener("keydown", (e) => {
+    if (e.key === "Enter")
+      findClients();
+  });
+
+  $("#btnNewClient").addEventListener("click", () =>
+    $("#dlgClient").showModal()
+  );
+
+  $("#btnSaveClient").addEventListener("click", (e) => {
+    e.preventDefault();
+    saveClient();
+  });
 
   $("#btnFinish").addEventListener("click", finish);
 

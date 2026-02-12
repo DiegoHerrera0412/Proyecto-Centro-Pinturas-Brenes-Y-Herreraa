@@ -29,61 +29,95 @@ foreach ($items as $it) {
 $in = implode(',', array_fill(0, count($ids), '?'));
 
 $pdo->beginTransaction();
+
 try {
+
   $st = $pdo->prepare("SELECT id_producto, nombre, precio, stock
-                       FROM dbo.producto
+                       FROM producto
                        WHERE id_producto IN ($in) AND activo = 1");
+
   $st->execute($ids);
   $prods = $st->fetchAll();
-  if (count($prods) !== count(array_unique($ids))) fail('Producto no encontrado');
+
+  if (count($prods) !== count(array_unique($ids))) {
+    throw new Exception('Producto no encontrado');
+  }
 
   $byId = [];
-  foreach ($prods as $p) $byId[(int)$p['id_producto']] = $p;
+  foreach ($prods as $p) {
+    $byId[(int)$p['id_producto']] = $p;
+  }
 
   $subtotal = 0.0;
+
   foreach ($items as $it) {
     $pid = (int)$it['id_producto'];
     $qty = (int)$it['cantidad'];
+
     $p = $byId[$pid];
-    if ((int)$p['stock'] < $qty) fail('Stock insuficiente: ' . $p['nombre'], 409);
+
+    if ((int)$p['stock'] < $qty) {
+      throw new Exception('Stock insuficiente: ' . $p['nombre']);
+    }
+
     $subtotal += ((float)$p['precio']) * $qty;
   }
 
   $total = $subtotal - $descuento + $impuesto;
   if ($total < 0) $total = 0;
 
-  $stV = $pdo->prepare("INSERT INTO dbo.venta(id_cliente, id_usuario, subtotal, descuento, impuesto, total, metodo_pago, observacion)
-                        OUTPUT INSERTED.id_venta
-                        VALUES (?,?,?,?,?,?,?,?)");
+  // Insert venta
+  $stV = $pdo->prepare("INSERT INTO venta
+      (id_cliente, id_usuario, subtotal, descuento, impuesto, total, metodo_pago, observacion)
+      VALUES (?,?,?,?,?,?,?,?)");
+
   $stV->execute([$id_cliente, $id_usuario, $subtotal, $descuento, $impuesto, $total, $metodo, $obs ?: null]);
-  $id_venta = (int)$stV->fetchColumn();
+
+  $id_venta = (int)$pdo->lastInsertId();
 
   $consecutivo = 'F' . date('Ymd') . '-' . str_pad((string)$id_venta, 6, '0', STR_PAD_LEFT);
 
-  $stF = $pdo->prepare("INSERT INTO dbo.factura(id_venta, total, consecutivo)
-                        OUTPUT INSERTED.id_factura
+  // Insert factura
+  $stF = $pdo->prepare("INSERT INTO factura(id_venta, total, consecutivo)
                         VALUES (?,?,?)");
-  $stF->execute([$id_venta, $total, $consecutivo]);
-  $id_factura = (int)$stF->fetchColumn();
 
-  $stD = $pdo->prepare("INSERT INTO dbo.detalle_venta(id_venta, id_producto, cantidad, precio_unitario)
+  $stF->execute([$id_venta, $total, $consecutivo]);
+
+  $id_factura = (int)$pdo->lastInsertId();
+
+  $stD = $pdo->prepare("INSERT INTO detalle_venta(id_venta, id_producto, cantidad, precio_unitario)
                         VALUES (?,?,?,?)");
-  $stUpd = $pdo->prepare("UPDATE dbo.producto SET stock = stock - ? WHERE id_producto = ?");
-  $stMov = $pdo->prepare("INSERT INTO dbo.inventario_mov(id_producto, tipo, cantidad, referencia)
+
+  $stUpd = $pdo->prepare("UPDATE producto
+                          SET stock = stock - ?
+                          WHERE id_producto = ?");
+
+  $stMov = $pdo->prepare("INSERT INTO inventario_mov(id_producto, tipo, cantidad, referencia)
                           VALUES (?,?,?,?)");
 
   foreach ($items as $it) {
     $pid = (int)$it['id_producto'];
     $qty = (int)$it['cantidad'];
     $price = (float)$byId[$pid]['precio'];
+
     $stD->execute([$id_venta, $pid, $qty, $price]);
     $stUpd->execute([$qty, $pid]);
     $stMov->execute([$pid, 'SALIDA', $qty, 'VENTA#' . $id_venta]);
   }
 
   $pdo->commit();
-  ok(['id_factura'=>$id_factura, 'id_venta'=>$id_venta, 'consecutivo'=>$consecutivo]);
+
+  ok([
+    'id_factura' => $id_factura,
+    'id_venta' => $id_venta,
+    'consecutivo' => $consecutivo
+  ]);
+
 } catch (Throwable $e) {
-  if ($pdo->inTransaction()) $pdo->rollBack();
+
+  if ($pdo->inTransaction()) {
+    $pdo->rollBack();
+  }
+
   fail('Error al finalizar: ' . $e->getMessage(), 500);
 }

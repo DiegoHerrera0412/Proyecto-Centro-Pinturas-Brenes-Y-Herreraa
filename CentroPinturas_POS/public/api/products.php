@@ -6,17 +6,23 @@ $q = trim($_GET['q'] ?? '');
 $limit = 25;
 
 if ($q === '') {
-  $st = $pdo->query("SELECT TOP {$limit} id_producto, nombre, sku, precio, stock
-                     FROM dbo.producto
+  $st = $pdo->query("SELECT id_producto, nombre, sku, precio, stock
+                     FROM producto
                      WHERE activo = 1
-                     ORDER BY creado_en DESC");
+                     ORDER BY id_producto DESC
+                     LIMIT {$limit}");
   ok($st->fetchAll());
 }
 
 $like = '%' . $q . '%';
-$st = $pdo->prepare("SELECT TOP {$limit} id_producto, nombre, sku, precio, stock
-                     FROM dbo.producto
-                     WHERE activo = 1 AND (nombre LIKE ? OR sku LIKE ?)
-                     ORDER BY CASE WHEN sku = ? THEN 0 ELSE 1 END, nombre ASC");
-$st->execute([$like, $like, $q]);
+
+$st = $pdo->prepare("SELECT id_producto, nombre, sku, precio, stock
+                     FROM producto
+                     WHERE activo = 1
+                     AND (nombre LIKE ? OR sku LIKE ?)
+                     ORDER BY nombre ASC
+                     LIMIT {$limit}");
+
+$st->execute([$like, $like]);
+
 ok($st->fetchAll());

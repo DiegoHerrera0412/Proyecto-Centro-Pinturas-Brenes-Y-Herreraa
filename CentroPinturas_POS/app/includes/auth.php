@@ -13,7 +13,7 @@ function sha_pass(string $plain): string {
 
 function require_login(): void {
   if (empty($_SESSION['user'])) {
-    header('Location: /login.php');
+    header('Location: login.php');
     exit;
   }
 }
